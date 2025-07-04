@@ -1249,6 +1249,37 @@ class MmprojModel(ModelBase):
             return None
         raise KeyError(f"could not find any of: {keys}")
 
+@ModelBase.register("GPTNeoForCausalLM")
+class GPTNeoModel(TextModel):
+    model_arch = gguf.MODEL_ARCH.GPTNEO
+
+    def set_gguf_parameters(self):
+        assert self.hparams["activation_function"] == "gelu_new"
+
+        hidden_size = self.hparams["hidden_size"]
+
+        self.gguf_writer.add_context_length(self.hparams["max_position_embeddings"])
+        self.gguf_writer.add_embedding_length(hidden_size)
+        self.gguf_writer.add_block_count(self.hparams["num_layers"])
+        self.gguf_writer.add_head_count(self.hparams["num_heads"])
+        self.gguf_writer.add_head_count_kv(self.hparams["num_heads"])
+        self.gguf_writer.add_layer_norm_eps(self.hparams["layer_norm_epsilon"])
+        self.gguf_writer.add_feed_forward_length(hidden_size * 4)
+
+    def set_vocab(self):
+        self._set_vocab_gpt2()
+
+    def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iterable[tuple[str, Tensor]]:
+        del bid  # unused
+
+        if name == "transformer.wte.weight":
+            return [
+                (self.map_tensor_name("token_embd.weight"), data_torch),
+                (self.map_tensor_name("output.weight"), data_torch)
+            ]
+
+        return [(self.map_tensor_name(name), data_torch)]
+
 
 @ModelBase.register("GPTNeoXForCausalLM")
 class GPTNeoXModel(TextModel):
